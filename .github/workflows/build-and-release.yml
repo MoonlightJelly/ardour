@@ -100,7 +100,7 @@ jobs:
             --prefix=/opt/ardour \
             --with-backend=${{ matrix.backend }} \
             --optimize \
-            --no-translations 2>&1 | tee configure.log
+            --no-nls 2>&1 | tee configure.log
           
           # Check if configure succeeded
           if grep -q "configuration finished successfully" configure.log; then
