@@ -16,7 +16,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: ubuntu:24.04
+      image: debian:bookworm
     strategy:
       matrix:
         backend: [alsa, jack]
@@ -40,7 +40,6 @@ jobs:
             libsndfile1-dev \
             libsamplerate0-dev \
             libfftw3-dev \
-            libfftw3-single3 \
             lv2-dev \
             liblilv-dev \
             libsuil-dev \
@@ -48,8 +47,6 @@ jobs:
             libserd-dev \
             libsord-dev \
             libboost-all-dev \
-            libboost-regex-dev \
-            libboost-program-options-dev \
             libglibmm-2.4-dev \
             libgtkmm-2.4-dev \
             libgtk2.0-dev \
@@ -69,7 +66,7 @@ jobs:
       - name: Verify Critical Libraries Installed
         run: |
           echo "=== Verifying key development packages ==="
-          dpkg -l | grep -E 'boost-dev|lv2|jack|alsa|sndfile|fftw|gtkmm|curl|archive|regex|program-options' || true
+          dpkg -l | grep -E 'boost-dev|lv2|jack|alsa|sndfile|fftw|gtkmm|gtk2|curl|archive|vamp' || true
           echo "=== Checking for pkg-config ==="
           pkg-config --version
           echo "=== Checking for autopoint ==="
@@ -124,7 +121,7 @@ jobs:
           cd install
           # Determine the Ardour version from the built binary or wscript
           VERSION=$(find opt/ -name "ardour-*" -type f -exec {} --version 2>&1 | head -1 | grep -oP '(\d+\.\d+[\w]*)' || echo "unknown")
-          ARCHIVE_NAME="ardour-${VERSION}-${{ matrix.backend }}-ubuntu2404-x86_64.zip"
+          ARCHIVE_NAME="ardour-${VERSION}-${{ matrix.backend }}-debian12-x86_64.zip"
           zip -r "../$ARCHIVE_NAME" .
           echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_ENV
 
