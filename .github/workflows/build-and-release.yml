@@ -56,7 +56,7 @@ jobs:
             libtag1-dev \
              vamp-plugin-sdk \
             liblrdf-dev \
-            libcurl4-openssl-dev \
+            libcurl4-gnutls-dev \
             libarchive-dev \
             libwebsockets-dev \
             libusb-1.0-0-dev \
