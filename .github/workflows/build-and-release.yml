@@ -54,7 +54,7 @@ jobs:
             libeigen3-dev \
             liblo-dev \
             libtag1-dev \
-             vamp-plugin-sdk \
+            vamp-plugin-sdk \
             liblrdf-dev \
             libcurl4-gnutls-dev \
             libarchive-dev \
@@ -69,8 +69,8 @@ jobs:
           dpkg -l | grep -E 'boost-dev|lv2|jack|alsa|sndfile|fftw|gtkmm|gtk2|curl|archive|vamp' || true
           echo "=== Checking for pkg-config ==="
           pkg-config --version
-          echo "=== Checking for autopoint ==="
-          autopoint --version || echo "autopoint not found!"
+          echo "=== Checking for python ==="
+          python3 --version
 
       - name: Checkout Source Code
         uses: actions/checkout@v4
@@ -90,13 +90,22 @@ jobs:
       - name: Configure Ardour
         id: configure
         run: |
-          # Try configuration without translations to bypass recent locale issues
+          # Create symlink for python if missing (waf requires 'python')
+          if ! command -v python &> /dev/null; then
+            ln -s /usr/bin/python3 /usr/local/bin/python
+          fi
+          
+          # Run configure with translations disabled
           ./waf configure \
             --prefix=/opt/ardour \
             --with-backend=${{ matrix.backend }} \
             --optimize \
             --no-translations 2>&1 | tee configure.log
-          if [ ${PIPESTATUS[0]} -ne 0 ]; then
+          
+          # Check if configure succeeded
+          if grep -q "configuration finished successfully" configure.log; then
+            echo "✅ Configure completed successfully"
+          else
             echo "=== Configure failed. Last 50 lines of log: ==="
             tail -50 configure.log
             exit 1
@@ -135,7 +144,6 @@ jobs:
   create-release:
     needs: build
     runs-on: ubuntu-latest
-    # Only create release on manual trigger or push to master
     if: github.event_name == 'workflow_dispatch' && inputs.create_release || github.event_name == 'push' && github.ref == 'refs/heads/master'
     permissions:
       contents: write
