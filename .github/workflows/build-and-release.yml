@@ -1,0 +1,132 @@
+name: Build and Release Ardour
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create a public release with artifacts?'
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  # ---------- BUILD JOB ----------
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:24.04
+    strategy:
+      matrix:
+        backend: [alsa, jack]
+    steps:
+      - name: Install Base System Dependencies
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -y && apt-get upgrade -y
+          apt-get install -y \
+            build-essential git pkg-config python3 python3-dev \
+            wget bison flex gettext autopoint libtool intltool \
+            zip unzip
+
+      - name: Install Ardour's Audio and UI Dependencies
+        run: |
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get install -y \
+            libasound2-dev libjack-jackd2-dev libsndfile1-dev \
+            libsamplerate0-dev libfftw3-dev libfftw3-single3 \
+            lv2-dev liblilv-dev libsuil-dev libsratom-dev \
+            libserd-dev libsord-dev libboost-all-dev \
+            libglibmm-2.4-dev libgtkmm-2.4-dev libgtk2.0-dev \
+            libcairo2-dev libeigen3-dev liblo-dev libtag1-dev \
+            libvamp-sdk2-dev liblrdf-dev libcurl4-openssl-dev \
+            libarchive-dev libwebsockets-dev libusb-1.0-0-dev \
+            libpulse-dev libreadline-dev
+
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Cache waf Build System
+        uses: actions/cache@v4
+        with:
+          path: |
+            .waf-*
+            build/
+          key: ${{ runner.os }}-waf-${{ hashFiles('wscript', 'libs/**/wscript', 'gtk2_ardour/wscript', 'headless/wscript') }}
+          restore-keys: |
+            ${{ runner.os }}-waf-
+
+      - name: Configure Ardour
+        run: |
+          ./waf configure \
+            --prefix=/opt/ardour \
+            --with-backend=${{ matrix.backend }} \
+            --optimize
+
+      - name: Build Ardour
+        run: ./waf -j$(nproc)
+
+      - name: Install to Staging Directory
+        run: ./waf install --destdir=$(pwd)/install
+
+      - name: Package Binary Archive
+        run: |
+          # Create a cleanly named archive with core binary and libs
+          cd install
+          # Determine the Ardour version from the built binary or wscript
+          VERSION=$(find opt/ -name "ardour-*" -type f -exec {} --version 2>&1 | head -1 | grep -oP '(\d+\.\d+[\w]*)' || echo "unknown")
+          ARCHIVE_NAME="ardour-${VERSION}-${{ matrix.backend }}-ubuntu2404-x86_64.zip"
+          zip -r "../$ARCHIVE_NAME" .
+          echo "archive_name=$ARCHIVE_NAME" >> $GITHUB_ENV
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ardour-${{ matrix.backend }}-build
+          path: ${{ env.archive_name }}
+
+  # ---------- RELEASE JOB ----------
+  create-release:
+    needs: build
+    runs-on: ubuntu-latest
+    # Only create release on manual trigger or push to master
+    if: github.event_name == 'workflow_dispatch' && inputs.create_release || github.event_name == 'push' && github.ref == 'refs/heads/master'
+    permissions:
+      contents: write
+    steps:
+      - name: Download All Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          merge-multiple: true
+
+      - name: Generate Release Tag
+        id: tag
+        run: |
+          DATE=$(date +'%Y%m%d-%H%M')
+          TAG="nightly-${DATE}"
+          echo "tag_name=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag_name }}
+          name: "Automated Build - ${{ steps.tag.outputs.tag_name }}"
+          body: |
+            This is an automated, unofficial build of Ardour for testing purposes.
+            
+            **Backends built:**
+            - ALSA
+            - JACK
+            
+            **Build Date:** ${{ github.event.repository.updated_at }}
+            **Commit SHA:** ${{ github.sha }}
+            
+            *Note: This is not an official release. Use at your own risk.*
+          files: artifacts/*
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
